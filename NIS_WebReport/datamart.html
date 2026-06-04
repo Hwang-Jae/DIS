@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>스마트팩토리 데이터 마트 대시보드</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 30px;
+            background-color: #f8f9fa;
+            color: #333;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        h2 {
+            margin-top: 0;
+            color: #111;
+            border-bottom: 2px solid #dee2e6;
+            padding-bottom: 15px;
+        }
+        .header-actions {
+            margin: 20px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: #e9ecef;
+            padding: 15px;
+            border-radius: 6px;
+        }
+        .info-text {
+            color: #495057;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .btn-download {
+            background-color: #28a745;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 15px;
+            font-weight: bold;
+            transition: background-color 0.2s;
+            box-shadow: 0 2px 4px rgba(40, 167, 69, 0.3);
+        }
+        .btn-download:hover {
+            background-color: #218838;
+        }
+        .btn-download:active {
+            background-color: #1e7e34;
+        }
+        .table-container {
+            max-height: 600px;
+            overflow-y: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+        }
+        th {
+            background-color: #343a40;
+            color: white;
+            padding: 12px;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+        td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #dee2e6;
+            font-size: 14px;
+        }
+        tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+        tr:hover {
+            background-color: #f1f3f5;
+        }
+        .badge-ok {
+            background-color: #e7f5ff;
+            color: #007bff;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .badge-ng {
+            background-color: #fff5f5;
+            color: #dc3545;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>생산 및 검사 데이터 마트 (Data Mart)</h2>
+    
+    <div class="header-actions">
+        <div class="info-text">
+            💡 <strong>안내:</strong> 시스템 부하 방지를 위해 화면에는 최신 <strong>500건</strong>의 샘플만 실시간 렌더링됩니다.<br>
+            전체 100만 건 데이터 분석이 필요하신 경우 우측의 엑셀 다운로드 버튼을 이용해 주세요.
+        </div>
+        <button class="btn-download" onclick="downloadAllData()">📥 전체 데이터 엑셀(CSV) 다운로드</button>
+    </div>
+
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>LOT ID</th>
+                    <th>설비 코드</th>
+                    <th>검사 시간</th>
+                    <th>검사 항목명</th>
+                    <th>측정치 (Value)</th>
+                    <th>최종 판정</th>
+                </tr>
+            </thead>
+            <tbody id="data-table-body">
+                <tr>
+                    <td colspan="6" style="text-align:center; color: #6c757d; padding: 30px;">
+                        데이터 서버로부터 데이터를 불러오는 중입니다...
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    // FastAPI 백엔드 주소 (포트번호 확인)
+    //const API_BASE_URL = "http://localhost:8000/api/datamart";
+    const API_BASE_URL = 'http://192.168.52.58:8001/api/datamart';
+
+    // [기능 1] 페이지 로드 시 최신 500건 샘플 목록을 가져와 테이블 레이아웃 생성
+    async function loadSampleData() {
+        try {
+            const response = await fetch(`${API_BASE_URL}/sample?limit=500`);
+            if (!response.ok) throw new Error("네트워크 응답이 정상적이지 않습니다.");
+            
+            const result = await response.json();
+            const tbody = document.getElementById("data-table-body");
+            tbody.innerHTML = ""; // 초기 메시지 비우기
+
+            if (!result.data || result.data.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 20px;">조회된 데이터가 없습니다.</td></tr>`;
+                return;
+            }
+
+            // 데이터 루프 돌며 로우 추가
+            result.data.forEach(row => {
+                const tr = document.createElement("tr");
+                
+                // 판정 결과에 따른 UI Badge 처리
+                const resultBadge = row.final_result === 'OK' 
+                    ? `<span class="badge-ok">OK</span>` 
+                    : `<span class="badge-ng">${row.final_result}</span>`;
+
+                tr.innerHTML = `
+                    <td><strong>${row.lot_id}</strong></td>
+                    <td>${row.equipment_code}</td>
+                    <td>${row.tran_time}</td>
+                    <td>${row.insp_item_name}</td>
+                    <td>${row.insp_value}</td>
+                    <td>${resultBadge}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        } catch (error) {
+            console.error("샘플 데이터 로딩 실패:", error);
+            document.getElementById("data-table-body").innerHTML = 
+                `<tr><td colspan="6" style="text-align:center; color:#dc3545; font-weight:bold; padding:30px;">
+                    ❌ 서버에서 데이터를 가져오지 못했습니다. 백엔드 실행 상태를 확인하세요.
+                </td></tr>`;
+        }
+    }
+
+    // [기능 2] 100만 건 대용량 CSV 파일 네이티브 다운로드 트리거
+    function downloadAllData() {
+        const message = "100만 건 대용량 데이터를 추출하여 다운로드합니다.\n" +
+                        "네트워크 환경 및 DB 속도에 따라 파일 생성 시작까지 수 초에서 수십 초가 소요될 수 있습니다.\n\n" +
+                        "진행하시겠습니까?";
+        
+        if (confirm(message)) {
+            /* [중요 아키텍처] 
+               fetch나 axios로 받으면 대용량 데이터 변수가 브라우저 가상 메모리를 삼켜 크래시가 납니다.
+               window.location.href 또는 링크 이동 방식을 쓰면, 브라우저 엔진이 백엔드 파일 스트림을 
+               받자마자 메모리를 거치지 않고 사용자 PC의 하드디스크 다운로드 폴더로 바로 Write(저장)하므로 
+               100만 건도 다운로드가 안정적으로 진행됩니다.
+            */
+            window.location.href = `${API_BASE_URL}/download`;
+        }
+    }
+
+    // 웹 화면 열릴 때 샘플 로드 함수 자동 실행
+    window.onload = loadSampleData;
+</script>
+</body>
+</html>

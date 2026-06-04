@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>생산 관리 통합 리포트 (고도화)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js 및 마크다운 파서 추가 -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        .fade-in { animation: fadeIn 0.5s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        .tree-line { border-left: 2px solid #e2e8f0; margin-left: 10px; padding-left: 15px; }
+        
+        .ai-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.85rem; }
+        .ai-table th, .ai-table td { border: 1px solid #e5e7eb; padding: 8px; text-align: left; }
+        .ai-table th { background-color: #f3f4f6; color: #374151; font-weight: bold; }
+        .chart-container { position: relative; height: 300px; width: 100%; margin-top: 10px; }
+    </style>
+</head>
+<body class="bg-gray-100 h-screen flex flex-col">
+    <nav class="bg-indigo-800 text-white p-4 flex gap-6 shadow-lg">
+        <h1 class="font-bold text-lg mr-4">🏭 Smart Factory</h1>
+        <button onclick="showTab('dashboard')" class="font-medium hover:text-indigo-200 transition">📊 종합 대시보드</button>
+        <button onclick="showTab('data')" class="font-medium hover:text-indigo-200 transition">📋 상세 조회</button>
+        <button onclick="showTab('chat')" class="font-medium text-yellow-300 hover:text-yellow-100 transition flex items-center gap-1">✨ AI 분석 챗봇</button>
+        <button onclick="window.open('datamart.html', '_blank')" class="font-medium text-yellow-300 hover:text-yellow-100 transition flex items-center gap-1">
+    🌊 데이터 마트
+</button>
+    </nav>
+
+    <main class="flex-1 p-6 overflow-y-auto">
+        <!-- 1. 대시보드 탭 -->
+        <div id="dashboard" class="tab-content">
+            <h2 class="text-2xl font-bold mb-6 text-gray-800">📊 공정 종합 대시보드</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                <div class="bg-white p-6 rounded-xl shadow border-b-4 border-indigo-500">
+                    <h3 class="text-gray-500 text-sm font-bold">전체 검사 누적 건수</h3>
+                    <p id="dashTotal" class="text-4xl font-bold mt-2 text-indigo-700">로딩중...</p>
+                </div>
+                <div class="bg-white p-6 rounded-xl shadow border-b-4 border-green-500">
+                    <h3 class="text-gray-500 text-sm font-bold">합격 (OK) 수량</h3>
+                    <p id="dashOk" class="text-4xl font-bold mt-2 text-green-600">-</p>
+                </div>
+                <div class="bg-white p-6 rounded-xl shadow border-b-4 border-red-500">
+                    <h3 class="text-gray-500 text-sm font-bold">불량 (NG) 수량</h3>
+                    <p id="dashNg" class="text-4xl font-bold mt-2 text-red-600">-</p>
+                </div>
+            </div>
+            <div class="bg-white p-6 rounded-xl shadow w-full">
+                <h3 class="text-gray-700 font-bold mb-4">최근 7일 생산/불량 추이</h3>
+                <div class="chart-container" style="height: 400px;" id="chartWrapper">
+                    <canvas id="dashboardChart"></canvas>
+                </div>
+                <div id="dashboardError" class="hidden text-red-500 font-bold text-center mt-4 bg-red-50 p-4 rounded-lg">
+                    백엔드 서버에 연결할 수 없습니다. 터미널에서 FastAPI 서버가 실행 중인지 확인하세요.
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. 상세 데이터 탭 -->
+        <div id="data" class="tab-content hidden">
+            <h2 class="text-2xl font-bold mb-4 text-gray-800">📋 상세 데이터 검색</h2>
+            <div class="bg-white p-4 rounded-xl shadow mb-4 flex flex-wrap gap-4 items-end">
+                <div><label class="block text-xs font-bold text-gray-500 mb-1">검사 일자</label><input type="date" id="searchDate" class="border border-gray-300 p-2 rounded"></div>
+                <div><label class="block text-xs font-bold text-gray-500 mb-1">LOT_ID (로트)</label><input type="text" id="searchLot" class="border border-gray-300 p-2 rounded" placeholder="로트번호 입력"></div>
+                <div><label class="block text-xs font-bold text-gray-500 mb-1">판정 결과</label><select id="searchResult" class="border border-gray-300 p-2 rounded"><option value="">전체</option><option value="OK">OK</option><option value="NG">NG</option></select></div>
+                <button onclick="loadData()" class="bg-indigo-600 text-white px-6 py-2 rounded font-bold hover:bg-indigo-700 shadow transition">데이터 검색</button>
+            </div>
+            <div class="overflow-x-auto bg-white rounded-xl shadow">
+                <table class="w-full text-sm">
+                    <thead><tr class="bg-gray-100 border-b border-gray-200"><th class="p-3 text-left">LOT_ID</th><th class="p-3 text-left">검사 일시</th><th class="p-3 text-left">검사 항목</th><th class="p-3 text-left">검사 값</th><th class="p-3 text-left">최종 판정</th></tr></thead>
+                    <tbody id="dataTable"></tbody>
+                </table>
+                <div id="dataError" class="hidden text-red-500 font-bold text-center p-4">서버 연결 오류로 데이터를 불러올 수 없습니다.</div>
+            </div>
+        </div>
+
+        <!-- 3. AI 챗봇 탭 -->
+        <div id="chat" class="tab-content flex-col h-full flex hidden">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold text-gray-800 flex items-center gap-2">🤖 AI 시각화 분석가 <span class="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full">v2.0</span></h2>
+                <p class="text-sm text-gray-500">"월별 NG 발생 빈도를 바 차트로 그려줘" 라고 질문해보세요.</p>
+            </div>
+            <div id="chatBox" class="flex-1 bg-white p-6 overflow-y-auto border mb-4 rounded-xl shadow-inner space-y-6"></div>
+            
+            <div class="flex gap-2 items-center bg-white p-3 border rounded-xl shadow-md">
+                <input type="text" id="userInput" class="flex-1 p-2 border-none outline-none text-base text-gray-700 font-medium" placeholder="원하는 분석이나 그래프를 자유롭게 요청하세요...">
+                <button onclick="sendMessage()" class="bg-indigo-600 text-white px-8 py-3 rounded-lg hover:bg-indigo-700 font-bold transition shadow-md">분석 수행</button>
+            </div>
+        </div>
+
+        <!-- 4. 데이터 마트 탭 -->
+        <!--<div id="mart" class="tab-content flex-col h-full flex hidden">
+            <div class="flex justify-between items-center mb-4">
+                <div>
+                    <h2 class="text-2xl font-bold text-gray-800 flex items-center gap-2">🛒 스마트팩토리 데이터 마트 대시보드 <span class="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full">v2.0</span></h2>
+                </div>
+                <div class="flex items-center gap-3">
+                    <p class="text-sm text-gray-500">"더 많은 데이터를 보고 싶으면 csv를 다운로드 하세요"</p>
+                    <a href="datamart.html" target="_blank" rel="noopener noreferrer" 
+                       class="bg-green-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-green-700 transition shadow flex items-center gap-1">
+                        📥 CSV 다운로드 (Datamart)
+                    </a>
+                </div>
+            </div>
+            <div id="chatBox" class="flex-1 bg-white p-6 overflow-y-auto border mb-4 rounded-xl shadow-inner space-y-6"></div>
+
+            <div class="flex gap-2 items-center bg-white p-3 border rounded-xl shadow-md">
+                <input type="text" id="userInput" class="flex-1 p-2 border-none outline-none text-base text-gray-700 font-medium" placeholder="원하는 분석이나 그래프를 자유롭게 요청하세요...">
+                <button onclick="sendMessage()" class="bg-indigo-600 text-white px-8 py-3 rounded-lg hover:bg-indigo-700 font-bold transition shadow-md">분석 수행</button>
+            </div>
+        </div>-->
+    </main>
+
+    <script>
+        // 전역 변수 및 초기화
+        let dashboardChartInstance = null;
+
+        const API_BASE_URL = 'http://192.168.52.58:8000';
+        
+        window.onload = function() {
+            // 초기 탭 설정
+            showTab('dashboard');
+            
+            // 엔터키 전송 이벤트
+            document.getElementById('userInput').addEventListener('keydown', function(e) {
+                if(e.key === 'Enter') sendMessage();
+            });
+        };
+
+        function showTab(id) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.getElementById(id).classList.remove('hidden');
+            if(id === 'dashboard') loadDashboard();
+        }
+
+        // 대시보드 로드
+        async function loadDashboard() {
+            try {
+                // UI 초기화
+                document.getElementById('dashboardError').classList.add('hidden');
+                document.getElementById('chartWrapper').style.display = 'block';
+                
+                //const res = await fetch('http://localhost:8000/api/dashboard');
+                const res = await fetch(`${API_BASE_URL}/api/dashboard`);
+                if (!res.ok) throw new Error("서버 응답 오류");
+                const data = await res.json();
+                if(data.error) throw new Error(data.error);
+
+                document.getElementById('dashTotal').innerText = data.total.toLocaleString();
+                document.getElementById('dashOk').innerText = data.ok.toLocaleString();
+                document.getElementById('dashNg').innerText = data.ng.toLocaleString();
+
+                const ctx = document.getElementById('dashboardChart').getContext('2d');
+                if(dashboardChartInstance) dashboardChartInstance.destroy();
+                
+                dashboardChartInstance = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: data.trend.labels,
+                        datasets: [
+                            { label: '전체 생산량', data: data.trend.totals, borderColor: '#4f46e5', backgroundColor: 'rgba(79, 70, 229, 0.1)', fill: true, tension: 0.3 },
+                            { label: '불량(NG) 수량', data: data.trend.ngs, borderColor: '#ef4444', backgroundColor: 'transparent', borderDash: [5, 5], tension: 0.3 }
+                        ]
+                    },
+                    options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false } }
+                });
+            } catch(e) { 
+                console.warn("대시보드 통신 실패 (정상적인 네트워크 알림입니다):", e); 
+                document.getElementById('dashTotal').innerText = "오프라인";
+                document.getElementById('dashOk').innerText = "-";
+                document.getElementById('dashNg').innerText = "-";
+                document.getElementById('chartWrapper').style.display = 'none';
+                document.getElementById('dashboardError').classList.remove('hidden');
+            }
+        }
+
+        // 상세 데이터 로드
+        async function loadData() {
+            try {
+                document.getElementById('dataError').classList.add('hidden');
+                document.getElementById('dataTable').innerHTML = '<tr><td colspan="5" class="text-center p-4">로딩 중...</td></tr>';
+                
+                const params = new URLSearchParams({
+                    date: document.getElementById('searchDate').value,
+                    lot: document.getElementById('searchLot').value,
+                    result: document.getElementById('searchResult').value
+                });
+                
+                //const res = await fetch(`http://localhost:8000/api/data?${params}`);
+                const res = await fetch(`${API_BASE_URL}/api/data?${params}`);
+                if (!res.ok) throw new Error("서버 응답 오류");
+                const data = await res.json();
+                
+                if (data.length === 0) {
+                    document.getElementById('dataTable').innerHTML = '<tr><td colspan="5" class="text-center p-4">조회된 데이터가 없습니다.</td></tr>';
+                    return;
+                }
+                
+                document.getElementById('dataTable').innerHTML = data.map(r => `
+                    <tr class="border-b hover:bg-indigo-50 transition duration-150">
+                        <td class="p-3 font-mono text-gray-700">${r.LOT_ID}</td>
+                        <td class="p-3 text-gray-500">${r.TRAN_TIME}</td>
+                        <td class="p-3 text-gray-700">${r.INSP_ITEM_NAME}</td>
+                        <td class="p-3 font-bold">${r.INSP_VALUE}</td>
+                        <td class="p-3 font-bold ${r.FINAL_RESULT=='NG'?'text-red-500 bg-red-50':'text-green-500'} text-center rounded">${r.FINAL_RESULT}</td>
+                    </tr>`).join('');
+            } catch (e) {
+                console.warn("상세 데이터 통신 실패:", e);
+                document.getElementById('dataTable').innerHTML = '';
+                document.getElementById('dataError').classList.remove('hidden');
+            }
+        }
+
+        // AI 챗봇 전송 및 렌더링
+        async function sendMessage() {
+            const input = document.getElementById('userInput');
+            const chatBox = document.getElementById('chatBox');
+            const message = input.value.trim();
+            if(!message) return;
+            
+            chatBox.innerHTML += `<div class="flex justify-end fade-in"><div class="bg-indigo-100 text-indigo-900 p-4 rounded-xl rounded-tr-none shadow-sm max-w-[80%] font-medium">${message}</div></div>`;
+            input.value = '';
+            
+            const processId = "process_" + Date.now();
+            chatBox.innerHTML += `
+                <div class="flex flex-col fade-in max-w-[85%]">
+                    <div class="bg-gray-50 border border-gray-200 p-4 rounded-xl rounded-tl-none shadow-sm">
+                        <b class="text-indigo-600 text-sm mb-2 flex items-center gap-2"><span class="animate-spin">⚙️</span> AI 분석 엔진 가동</b>
+                        <ul id="${processId}" class="list-none space-y-1 font-mono text-xs text-gray-500"></ul>
+                    </div>
+                </div>`;
+            
+            const processList = document.getElementById(processId);
+
+            try {
+                //const res = await fetch('http://localhost:8000/api/chat', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({message: message}) });
+                const res = await fetch(`${API_BASE_URL}/api/chat`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({message: message}) });
+                if (!res.ok) throw new Error("서버 응답 오류");
+                
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
+                
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    const lines = decoder.decode(value).split('\n').filter(Boolean);
+                    
+                    lines.forEach(line => {
+                        try {
+                            const data = JSON.parse(line);
+                            if (data.step && !data.final_data) {
+                                processList.innerHTML += `<li class="tree-line fade-in">${data.step}</li>`;
+                                chatBox.scrollTop = chatBox.scrollHeight;
+                            }
+                            
+                            // 최종 데이터 수신 시 시각화 처리
+                            if (data.final_data) {
+                                const fd = data.final_data;
+                                const wrapDiv = document.createElement('div');
+                                wrapDiv.className = 'mt-3 pt-3 border-t border-gray-200 fade-in';
+                                
+                                // 1. AI 코멘트 렌더링
+                                let contentHtml = `<p class="text-gray-800 text-sm mb-3 leading-relaxed">🤖 <b>분석 코멘트:</b> ${fd.message}</p>`;
+                                
+                                // 2. 차트 또는 테이블 렌더링
+                                if (fd.response_type === 'table' || !fd.x_axis || fd.data.length === 0) {
+                                    // 테이블 렌더링
+                                    if(fd.data.length > 0) {
+                                        const cols = Object.keys(fd.data[0]);
+                                        contentHtml += `<div class="overflow-x-auto"><table class="ai-table"><thead><tr>${cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead><tbody>`;
+                                        contentHtml += fd.data.map(row => `<tr>${cols.map(c=>`<td>${row[c]}</td>`).join('')}</tr>`).join('');
+                                        contentHtml += `</tbody></table></div>`;
+                                    } else {
+                                        contentHtml += `<p class="text-red-500 text-sm font-bold mt-2">조회된 데이터가 없습니다.</p>`;
+                                    }
+                                    wrapDiv.innerHTML = contentHtml;
+                                    processList.parentElement.appendChild(wrapDiv);
+                                } else {
+                                    // 그래프(Chart.js) 렌더링
+                                    const canvasId = 'canvas_' + Date.now();
+                                    contentHtml += `<div class="chart-container bg-white border rounded-lg p-2"><canvas id="${canvasId}"></canvas></div>`;
+                                    wrapDiv.innerHTML = contentHtml;
+                                    processList.parentElement.appendChild(wrapDiv);
+                                    
+                                    // Chart.js 데이터 구성
+                                    const ctx = document.getElementById(canvasId).getContext('2d');
+                                    const labels = fd.data.map(r => r[fd.x_axis] || 'N/A');
+                                    const values = fd.data.map(r => r[fd.y_axis] || 0);
+                                    
+                                    new Chart(ctx, {
+                                        type: fd.response_type === 'pie' ? 'pie' : (fd.response_type === 'line' ? 'line' : 'bar'),
+                                        data: {
+                                            labels: labels,
+                                            datasets: [{
+                                                label: fd.y_axis,
+                                                data: values,
+                                                backgroundColor: ['rgba(79, 70, 229, 0.6)', 'rgba(239, 68, 68, 0.6)', 'rgba(16, 185, 129, 0.6)', 'rgba(245, 158, 11, 0.6)'],
+                                                borderColor: '#4f46e5',
+                                                borderWidth: 1
+                                            }]
+                                        },
+                                        options: { responsive: true, maintainAspectRatio: false }
+                                    });
+                                }
+                                chatBox.scrollTop = chatBox.scrollHeight;
+                            }
+                        } catch(e) {}
+                    });
+                }
+            } catch(e) { 
+                console.warn("챗봇 통신 실패:", e);
+                chatBox.innerHTML += `<div class="text-red-500 bg-red-50 rounded-lg p-4 font-bold border border-red-200 mt-2">❌ 서버 통신 오류: 백엔드 서버(FastAPI)가 실행 중인지 확인해주세요.</div>`; 
+                chatBox.scrollTop = chatBox.scrollHeight;
+            }
+        }
+    </script>
+</body>
+</html>
